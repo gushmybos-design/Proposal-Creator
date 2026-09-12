@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --brand: #1d4ed8;
+  --brand-contrast: #ffffff;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Animated cover backgrounds (Qwilr-style) */
+.gradient-aurora {
+  background: linear-gradient(120deg, var(--brand), #7c3aed, #0ea5e9, var(--brand));
+  background-size: 300% 300%;
+  animation: aurora 14s ease infinite;
+}
+.gradient-dusk {
+  background: linear-gradient(120deg, #0f172a, var(--brand), #f43f5e, #0f172a);
+  background-size: 300% 300%;
+  animation: aurora 18s ease infinite;
+}
+.gradient-mint {
+  background: linear-gradient(120deg, #065f46, #10b981, var(--brand), #065f46);
+  background-size: 300% 300%;
+  animation: aurora 16s ease infinite;
+}
+.gradient-solid {
+  background: var(--brand);
+}
+@keyframes aurora {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Rendered markdown */
+.prose-lite p { margin: 0 0 1em; line-height: 1.7; }
+.prose-lite h2 { font-size: 1.5rem; font-weight: 700; margin: 1.5em 0 .5em; letter-spacing: -0.01em; }
+.prose-lite h3 { font-size: 1.15rem; font-weight: 600; margin: 1.25em 0 .4em; }
+.prose-lite ul { list-style: disc; padding-left: 1.4em; margin: 0 0 1em; }
+.prose-lite li { margin: .3em 0; line-height: 1.6; }
+.prose-lite a { color: var(--brand); text-decoration: underline; }
+.prose-lite strong { font-weight: 600; }
+
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed; }
+.btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed bg-zinc-900 text-white hover:bg-zinc-700; }
+.btn-brand { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-white; background: var(--brand); }
+.btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50; }
+.input { @apply w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200; }
+.label { @apply mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500; }
+.card { @apply rounded-xl border border-zinc-200 bg-white shadow-sm; }

@@ -1,0 +1,290 @@
+// Propel — proposal platform for MYBOS, integrated with HubSpot.
+// One Workspace == one HubSpot portal (hub). Users are HubSpot users who signed in via OAuth.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Workspace {
+  id            String   @id @default(cuid())
+  name          String
+  hubId         String   @unique // HubSpot portal id
+  brandColor    String   @default("#1D4ED8")
+  logoUrl       String?
+  // Deal stage to move a deal to when a proposal is accepted (HubSpot stage id)
+  acceptedStageId String?
+  /// Deal stage when the client declines (optional)
+  declinedStageId String?
+  /// Require a MYBOS counter-signature before a proposal is fully executed
+  requireCounterSign Boolean @default(false)
+  /// HubSpot timeline event template ids, keyed by event name (published, viewed, accepted, declined)
+  timelineTemplates Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  hubspot     HubSpotConnection?
+  users       User[]
+  templates   Template[]
+  proposals   Proposal[]
+  lineItems   SavedLineItem[]
+  auditLogs   AuditLog[]
+}
+
+enum UserRole {
+  ADMIN
+  REP
+}
+
+/// OAuth tokens for the HubSpot portal. One per workspace.
+model HubSpotConnection {
+  id           String    @id @default(cuid())
+  workspaceId  String    @unique
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scopes       String[]
+  updatedAt    DateTime  @updatedAt
+}
+
+model User {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  hubspotUserId String?
+  email         String
+  name          String?
+  role          UserRole  @default(REP)
+  createdAt     DateTime  @default(now())
+
+  proposals     Proposal[]
+  notifications Notification[]
+  signatures    Signature[]
+  auditLogs     AuditLog[]
+  templateVersions TemplateVersion[]
+
+  @@unique([workspaceId, email])
+}
+
+/// Reusable proposal templates. `blocks` is a JSON array of Block (see src/lib/blocks/schema.ts)
+/// and may contain {{deal.dealname}}-style variables.
+model Template {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  blocks      Json
+  theme       Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  versions    TemplateVersion[]
+}
+
+/// Snapshot of a template each time it is saved, so edits can be reviewed and restored.
+model TemplateVersion {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name        String
+  blocks      Json
+  theme       Json?
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([templateId, createdAt])
+}
+
+/// Saved line items reps can drop into a quote block.
+model SavedLineItem {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  unitPrice   Decimal   @db.Decimal(12, 2)
+  billing     String    @default("once") // once | monthly | yearly
+  hubspotProductId String?
+}
+
+enum ProposalStatus {
+  DRAFT
+  PUBLISHED
+  VIEWED
+  ACCEPTED
+  DECLINED
+  CHANGES_REQUESTED
+  EXPIRED
+}
+
+model Proposal {
+  id          String         @id @default(cuid())
+  workspaceId String
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id])
+  title       String
+  status      ProposalStatus @default(DRAFT)
+  /// Public, unguessable token used in the client link /p/[token]
+  publicToken String         @unique
+  blocks      Json
+  theme       Json?
+  /// Snapshot of the HubSpot variables used when the proposal was generated
+  variables   Json?
+
+  // HubSpot associations
+  hubspotDealId    String?
+  hubspotContactId String?
+  hubspotCompanyId String?
+
+  expiresAt    DateTime?
+  publishedAt  DateTime?
+  firstViewedAt DateTime?
+  acceptedAt   DateTime?
+  counterSignedAt DateTime?
+  declinedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  views         ViewSession[]
+  signatures    Signature[]
+  notifications Notification[]
+  feedback      ProposalFeedback[]
+
+  @@index([workspaceId, status])
+  @@index([hubspotDealId])
+}
+
+/// One browser session viewing a proposal.
+model ViewSession {
+  id          String    @id @default(cuid())
+  proposalId  String
+  proposal    Proposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  visitorId   String    // stable cookie id per device
+  viewerEmail String?   // captured if the client identifies themselves / signs
+  userAgent   String?
+  ipHash      String?
+  isMobile    Boolean   @default(false)
+  startedAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  totalSeconds Int      @default(0)
+
+  events BlockEvent[]
+
+  @@index([proposalId, startedAt])
+}
+
+enum BlockEventType {
+  VIEW      // block became visible; seconds accumulates dwell time
+  CLICK     // accordion opened, video played, link clicked
+  ACCEPT_STARTED
+  ACCEPTED
+}
+
+model BlockEvent {
+  id        String         @id @default(cuid())
+  sessionId String
+  session   ViewSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  blockId   String
+  type      BlockEventType
+  seconds   Int            @default(0)
+  meta      Json?
+  at        DateTime       @default(now())
+
+  @@index([sessionId, blockId])
+}
+
+enum SignerRole {
+  CLIENT
+  COUNTERSIGNER
+}
+
+model Signature {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  role        SignerRole @default(CLIENT)
+  /// Set for MYBOS counter-signatures
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  signerName  String
+  signerEmail String
+  signerTitle String?
+  /// PNG data URL of the drawn signature
+  imageData   String
+  termsVersion String
+  acceptedTotal Decimal? @db.Decimal(12, 2)
+  ipHash      String?
+  userAgent   String?
+  signedAt    DateTime @default(now())
+}
+
+enum FeedbackType {
+  DECLINED
+  CHANGES_REQUESTED
+}
+
+/// Client-side feedback: a decline or a request for changes, with their message.
+model ProposalFeedback {
+  id         String       @id @default(cuid())
+  proposalId String
+  proposal   Proposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  type       FeedbackType
+  name       String
+  email      String
+  message    String
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([proposalId, createdAt])
+}
+
+enum NotificationType {
+  FIRST_VIEW
+  REVISIT
+  ACCEPTED
+  COUNTERSIGNED
+  DECLINED
+  CHANGES_REQUESTED
+  ACCEPT_STALLED
+  EXPIRING
+}
+
+/// Who did what, when — for admins. Meta holds a small diff/summary.
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String    // e.g. proposal.publish, template.save, settings.update
+  entityType  String    // proposal | template | workspace | user
+  entityId    String
+  meta        Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proposalId String
+  proposal   Proposal         @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  type       NotificationType
+  message    String
+  readAt     DateTime?
+  emailedAt  DateTime?
+  createdAt  DateTime         @default(now())
+
+  @@index([userId, readAt])
+}

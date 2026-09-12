@@ -1,0 +1,10 @@
+{
+  "type": "crm-card",
+  "data": {
+    "title": "Proposals",
+    "uid": "propel-proposals-card",
+    "location": "crm.record.tab",
+    "module": { "file": "ProposalsCard.jsx" },
+    "objectTypes": [{ "name": "deals" }]
+  }
+}
